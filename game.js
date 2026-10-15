@@ -46,7 +46,7 @@ function initGame() {
   playerMesh.castShadow = true;
   playerGroup.add(playerMesh);
 
-  // Sword slash indicator
+  // Sword slash indicator (Player)
   const swordGeo = new THREE.BoxGeometry(0.2, 0.2, 1.8);
   const swordMat = new THREE.MeshBasicMaterial({ color: 0xffe600, transparent: true, opacity: 0 });
   const swordMesh = new THREE.Mesh(swordGeo, swordMat);
@@ -63,9 +63,33 @@ function initGame() {
   enemyMesh.castShadow = true;
   scene.add(enemyMesh);
 
-  // --- 6. STATE & CONTROLS ---
-  const enemyState = { hp: 100, maxHp: 100, isAlive: true, respawnTimer: 0 };
-  const playerState = { speed: 0.15, isAttacking: false, attackCooldown: 0 };
+  // Enemy Attack Indicator Flash
+  const enemySlashGeo = new THREE.BoxGeometry(0.2, 0.2, 1.8);
+  const enemySlashMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0 });
+  const enemySlashMesh = new THREE.Mesh(enemySlashGeo, enemySlashMat);
+  enemySlashMesh.position.set(0, 1.0, 1.0);
+  enemyMesh.add(enemySlashMesh);
+
+  // --- 6. GAME STATE ---
+  const enemyState = {
+    hp: 100,
+    maxHp: 100,
+    isAlive: true,
+    respawnTimer: 0,
+    speed: 0.07,
+    attackRange: 2.2,
+    attackCooldown: 0,
+    detectionRange: 15
+  };
+
+  const playerState = {
+    hp: 100,
+    maxHp: 100,
+    speed: 0.15,
+    isAttacking: false,
+    attackCooldown: 0,
+    isAlive: true
+  };
 
   const keys = {};
   window.addEventListener("keydown", (e) => (keys[e.key.toLowerCase()] = true));
@@ -75,45 +99,88 @@ function initGame() {
   function animate() {
     requestAnimationFrame(animate);
 
-    // Movement
-    if (keys["w"]) playerGroup.position.z -= playerState.speed;
-    if (keys["s"]) playerGroup.position.z += playerState.speed;
-    if (keys["a"]) playerGroup.position.x -= playerState.speed;
-    if (keys["d"]) playerGroup.position.x += playerState.speed;
+    if (playerState.isAlive) {
+      // --- Player Movement ---
+      if (keys["w"]) playerGroup.position.z -= playerState.speed;
+      if (keys["s"]) playerGroup.position.z += playerState.speed;
+      if (keys["a"]) playerGroup.position.x -= playerState.speed;
+      if (keys["d"]) playerGroup.position.x += playerState.speed;
 
-    // Attack
-    if (keys[" "] && playerState.attackCooldown === 0) {
-      playerState.isAttacking = true;
-      playerState.attackCooldown = 25;
-      swordMat.opacity = 0.9;
+      // --- Player Attack ---
+      if (keys[" "] && playerState.attackCooldown === 0) {
+        playerState.isAttacking = true;
+        playerState.attackCooldown = 25;
+        swordMat.opacity = 0.9;
 
-      if (enemyState.isAlive) {
-        const dist = playerGroup.position.distanceTo(enemyMesh.position);
-        if (dist < 3.0) {
-          enemyState.hp -= 25;
-          enemyMesh.position.z -= 0.3; // Knockback
+        if (enemyState.isAlive) {
+          const dist = playerGroup.position.distanceTo(enemyMesh.position);
+          if (dist < 3.0) {
+            enemyState.hp -= 25;
+            
+            // Knock enemy back away from player
+            const dir = new THREE.Vector3().subVectors(enemyMesh.position, playerGroup.position).normalize();
+            enemyMesh.position.addScaledVector(dir, 1.2);
 
-          if (enemyState.hp <= 0) {
-            enemyState.hp = 0;
-            enemyState.isAlive = false;
-            enemyMesh.visible = false;
-            enemyState.respawnTimer = 120;
+            if (enemyState.hp <= 0) {
+              enemyState.hp = 0;
+              enemyState.isAlive = false;
+              enemyMesh.visible = false;
+              enemyState.respawnTimer = 120; // 2 seconds
+            }
+            updateUI();
           }
-          updateUI();
         }
+      }
+
+      if (playerState.isAttacking && swordMat.opacity > 0) {
+        swordMat.opacity -= 0.05;
+      }
+
+      if (playerState.attackCooldown > 0) {
+        playerState.attackCooldown--;
+        if (playerState.attackCooldown === 0) playerState.isAttacking = false;
       }
     }
 
-    if (playerState.isAttacking) {
-      if (swordMat.opacity > 0) swordMat.opacity -= 0.05;
+    // --- ENEMY AI (Chase & Attack Player) ---
+    if (enemyState.isAlive && playerState.isAlive) {
+      const distToPlayer = enemyMesh.position.distanceTo(playerGroup.position);
+
+      // Face player
+      enemyMesh.lookAt(playerGroup.position.x, enemyMesh.position.y, playerGroup.position.z);
+
+      // Chase player if within detection distance but outside hit range
+      if (distToPlayer < enemyState.detectionRange && distToPlayer > enemyState.attackRange) {
+        const dir = new THREE.Vector3().subVectors(playerGroup.position, enemyMesh.position).normalize();
+        enemyMesh.position.x += dir.x * enemyState.speed;
+        enemyMesh.position.z += dir.z * enemyState.speed;
+      }
+
+      // Enemy Attack
+      if (distToPlayer <= enemyState.attackRange && enemyState.attackCooldown === 0) {
+        enemyState.attackCooldown = 60; // Enemy attacks every 1 second
+        enemySlashMat.opacity = 0.9;
+
+        // Damage Player
+        playerState.hp -= 15;
+        if (playerState.hp <= 0) {
+          playerState.hp = 0;
+          playerState.isAlive = false;
+          document.getElementById("status-text").innerText = "YOU DIED! Press R to Restart";
+        }
+        updateUI();
+      }
+
+      if (enemySlashMat.opacity > 0) {
+        enemySlashMat.opacity -= 0.05;
+      }
+
+      if (enemyState.attackCooldown > 0) {
+        enemyState.attackCooldown--;
+      }
     }
 
-    if (playerState.attackCooldown > 0) {
-      playerState.attackCooldown--;
-      if (playerState.attackCooldown === 0) playerState.isAttacking = false;
-    }
-
-    // Respawn
+    // --- Enemy Respawn Logic ---
     if (!enemyState.isAlive) {
       enemyState.respawnTimer--;
       document.getElementById("status-text").innerText = `Respawning in ${(enemyState.respawnTimer / 60).toFixed(1)}s`;
@@ -128,7 +195,20 @@ function initGame() {
       }
     }
 
-    // Camera follow
+    // --- Restart Game if Player Dies ---
+    if (!playerState.isAlive && keys["r"]) {
+      playerState.hp = playerState.maxHp;
+      playerState.isAlive = true;
+      playerGroup.position.set(0, 0, 0);
+      enemyMesh.position.set(0, 1.0, -8);
+      enemyState.hp = enemyState.maxHp;
+      enemyState.isAlive = true;
+      enemyMesh.visible = true;
+      updateUI();
+      document.getElementById("status-text").innerText = "Target Locked";
+    }
+
+    // --- Camera Follows Player ---
     camera.position.x = playerGroup.position.x;
     camera.position.y = playerGroup.position.y + 6;
     camera.position.z = playerGroup.position.z + 10;
@@ -138,9 +218,14 @@ function initGame() {
   }
 
   function updateUI() {
-    const hpBar = document.getElementById("enemy-hp-bar");
-    if (hpBar) {
-      hpBar.style.width = (enemyState.hp / enemyState.maxHp) * 100 + "%";
+    const enemyBar = document.getElementById("enemy-hp-bar");
+    if (enemyBar) {
+      enemyBar.style.width = (enemyState.hp / enemyState.maxHp) * 100 + "%";
+    }
+
+    let playerBar = document.getElementById("player-hp-bar");
+    if (playerBar) {
+      playerBar.style.width = (playerState.hp / playerState.maxHp) * 100 + "%";
     }
   }
 
