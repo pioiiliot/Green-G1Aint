@@ -37,20 +37,56 @@ function initGame() {
   grid.position.y = 0.01;
   scene.add(grid);
 
-  // --- 4. PLAYER (Cyan Cylinder) ---
-  const playerGroup = new THREE.Group();
-  const playerGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.8, 16);
-  const playerMat = new THREE.MeshStandardMaterial({ color: 0x00d2d3 });
-  const playerMesh = new THREE.Mesh(playerGeo, playerMat);
-  playerMesh.position.y = 0.9;
-  playerMesh.castShadow = true;
-  playerGroup.add(playerMesh);
+  // --- 4. HELPER: BUILD AMONG US CREWMATE CHARACTER ---
+  function createCrewmate(suitColorHex) {
+    const crewmateGroup = new THREE.Group();
 
-  // Normal Sword slash (Player)
+    // Suit Material
+    const suitMat = new THREE.MeshStandardMaterial({ 
+      color: suitColorHex, 
+      roughness: 0.3, 
+      metalness: 0.1 
+    });
+
+    // 1. Main Bean Body (Rounded Capsule)
+    const bodyGeo = new THREE.CapsuleGeometry(0.6, 1.0, 8, 16);
+    const bodyMesh = new THREE.Mesh(bodyGeo, suitMat);
+    bodyMesh.position.y = 1.1;
+    bodyMesh.castShadow = true;
+    crewmateGroup.add(bodyMesh);
+
+    // 2. Glass Visor (Cyan/Light Blue)
+    const visorGeo = new THREE.SphereGeometry(0.35, 16, 16);
+    visorGeo.scale(1.2, 0.7, 0.6); // Flatten sphere into a visor shape
+    const visorMat = new THREE.MeshStandardMaterial({ 
+      color: 0x99ccff, 
+      roughness: 0.1, 
+      metalness: 0.8 
+    });
+    const visorMesh = new THREE.Mesh(visorGeo, visorMat);
+    visorMesh.position.set(0, 1.2, 0.45); // Attach to front face
+    crewmateGroup.add(visorMesh);
+
+    // 3. Backpack (Oxygen Tank)
+    const packGeo = new THREE.BoxGeometry(0.6, 0.8, 0.35);
+    const packMesh = new THREE.Mesh(packGeo, suitMat);
+    packMesh.position.set(0, 1.0, -0.5); // Attach to back
+    packMesh.castShadow = true;
+    crewmateGroup.add(packMesh);
+
+    return crewmateGroup;
+  }
+
+  // --- 5. CREATE PLAYER (Cyan Crewmate) ---
+  const playerGroup = new THREE.Group();
+  const playerCrewmate = createCrewmate(0x00d2d3); // Cyan suit
+  playerGroup.add(playerCrewmate);
+
+  // Normal Sword Slash Visual
   const swordGeo = new THREE.BoxGeometry(0.2, 0.2, 1.8);
   const swordMat = new THREE.MeshBasicMaterial({ color: 0xffe600, transparent: true, opacity: 0 });
   const swordMesh = new THREE.Mesh(swordGeo, swordMat);
-  swordMesh.position.set(0.6, 0.9, -0.8);
+  swordMesh.position.set(0.6, 1.0, -0.8);
   playerGroup.add(swordMesh);
 
   // Ultimate Visual Effect (Shockwave Ring)
@@ -63,22 +99,19 @@ function initGame() {
 
   scene.add(playerGroup);
 
-  // --- 5. ENEMY (Red Cylinder) ---
-  const enemyGeo = new THREE.CylinderGeometry(0.6, 0.6, 2.0, 16);
-  const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff4757 });
-  const enemyMesh = new THREE.Mesh(enemyGeo, enemyMat);
-  enemyMesh.position.set(0, 1.0, -8);
-  enemyMesh.castShadow = true;
+  // --- 6. CREATE ENEMY (Red Crewmate Impostor) ---
+  const enemyMesh = createCrewmate(0xff4757); // Red suit
+  enemyMesh.position.set(0, 0, -8);
   scene.add(enemyMesh);
 
-  // Enemy Attack Flash
+  // Enemy Red Slash Effect
   const enemySlashGeo = new THREE.BoxGeometry(0.2, 0.2, 1.8);
   const enemySlashMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0 });
   const enemySlashMesh = new THREE.Mesh(enemySlashGeo, enemySlashMat);
   enemySlashMesh.position.set(0, 1.0, 1.0);
   enemyMesh.add(enemySlashMesh);
 
-  // --- 6. GAME STATE ---
+  // --- 7. GAME STATE ---
   const enemyState = {
     hp: 100,
     maxHp: 100,
@@ -97,8 +130,8 @@ function initGame() {
     isAttacking: false,
     attackCooldown: 0,
     isUltActive: false,
-    ultCooldown: 0,       // Cooldown timer in frames
-    maxUltCooldown: 600,  // 600 frames = 10 seconds at 60fps
+    ultCooldown: 0,
+    maxUltCooldown: 600,
     isAlive: true
   };
 
@@ -106,16 +139,29 @@ function initGame() {
   window.addEventListener("keydown", (e) => (keys[e.key.toLowerCase()] = true));
   window.addEventListener("keyup", (e) => (keys[e.key.toLowerCase()] = false));
 
-  // --- 7. MAIN LOOP ---
+  // --- 8. MAIN LOOP ---
   function animate() {
     requestAnimationFrame(animate);
 
     if (playerState.isAlive) {
       // --- Player Movement ---
-      if (keys["w"]) playerGroup.position.z -= playerState.speed;
-      if (keys["s"]) playerGroup.position.z += playerState.speed;
-      if (keys["a"]) playerGroup.position.x -= playerState.speed;
-      if (keys["d"]) playerGroup.position.x += playerState.speed;
+      let isMoving = false;
+      let moveDir = new THREE.Vector3(0, 0, 0);
+
+      if (keys["w"]) { moveDir.z -= 1; isMoving = true; }
+      if (keys["s"]) { moveDir.z += 1; isMoving = true; }
+      if (keys["a"]) { moveDir.x -= 1; isMoving = true; }
+      if (keys["d"]) { moveDir.x += 1; isMoving = true; }
+
+      if (isMoving) {
+        moveDir.normalize();
+        playerGroup.position.x += moveDir.x * playerState.speed;
+        playerGroup.position.z += moveDir.z * playerState.speed;
+
+        // Rotate crewmate body toward movement direction
+        const targetAngle = Math.atan2(moveDir.x, moveDir.z);
+        playerCrewmate.rotation.y = targetAngle;
+      }
 
       // --- Normal Attack (SPACE) ---
       if (keys[" "] && playerState.attackCooldown === 0) {
@@ -136,20 +182,18 @@ function initGame() {
         playerState.isUltActive = true;
         playerState.ultCooldown = playerState.maxUltCooldown;
         
-        // Reset Shockwave Visual
         ultMesh.scale.set(1, 1, 1);
         ultMat.opacity = 1.0;
 
-        // AoE Damage (Hits enemy anywhere in 7 unit radius)
         if (enemyState.isAlive) {
           const dist = playerGroup.position.distanceTo(enemyMesh.position);
           if (dist < 7.0) {
-            damageEnemy(60, 3.5); // Massive 60 Damage + HUGE Knockback
+            damageEnemy(60, 3.5);
           }
         }
       }
 
-      // Shockwave Expansion Animation
+      // Shockwave Animation
       if (playerState.isUltActive) {
         ultMesh.scale.x += 0.3;
         ultMesh.scale.y += 0.3;
@@ -160,12 +204,10 @@ function initGame() {
         }
       }
 
-      // Attack Visual Fade
       if (playerState.isAttacking && swordMat.opacity > 0) {
         swordMat.opacity -= 0.05;
       }
 
-      // Cooldown Timers
       if (playerState.attackCooldown > 0) {
         playerState.attackCooldown--;
         if (playerState.attackCooldown === 0) playerState.isAttacking = false;
@@ -176,19 +218,21 @@ function initGame() {
       }
     }
 
-    // --- ENEMY AI (Chase & Attack) ---
+    // --- ENEMY AI ---
     if (enemyState.isAlive && playerState.isAlive) {
       const distToPlayer = enemyMesh.position.distanceTo(playerGroup.position);
 
+      // Enemy faces player
       enemyMesh.lookAt(playerGroup.position.x, enemyMesh.position.y, playerGroup.position.z);
 
+      // Chase Player
       if (distToPlayer < enemyState.detectionRange && distToPlayer > enemyState.attackRange) {
         const dir = new THREE.Vector3().subVectors(playerGroup.position, enemyMesh.position).normalize();
         enemyMesh.position.x += dir.x * enemyState.speed;
         enemyMesh.position.z += dir.z * enemyState.speed;
       }
 
-      // Enemy Attack
+      // Attack
       if (distToPlayer <= enemyState.attackRange && enemyState.attackCooldown === 0) {
         enemyState.attackCooldown = 60;
         enemySlashMat.opacity = 0.9;
@@ -211,7 +255,7 @@ function initGame() {
       }
     }
 
-    // --- Enemy Respawn Logic ---
+    // --- Enemy Respawn ---
     if (!enemyState.isAlive) {
       enemyState.respawnTimer--;
       document.getElementById("status-text").innerText = `Respawning in ${(enemyState.respawnTimer / 60).toFixed(1)}s`;
@@ -220,7 +264,7 @@ function initGame() {
         enemyState.isAlive = true;
         enemyState.hp = enemyState.maxHp;
         enemyMesh.visible = true;
-        enemyMesh.position.set((Math.random() - 0.5) * 10, 1.0, -8);
+        enemyMesh.position.set((Math.random() - 0.5) * 10, 0, -8);
         updateUI();
         document.getElementById("status-text").innerText = "Target Locked";
       }
@@ -232,7 +276,7 @@ function initGame() {
       playerState.isAlive = true;
       playerState.ultCooldown = 0;
       playerGroup.position.set(0, 0, 0);
-      enemyMesh.position.set(0, 1.0, -8);
+      enemyMesh.position.set(0, 0, -8);
       enemyState.hp = enemyState.maxHp;
       enemyState.isAlive = true;
       enemyMesh.visible = true;
@@ -250,11 +294,10 @@ function initGame() {
     renderer.render(scene, camera);
   }
 
-  // --- DAMAGE & KNOCKBACK HELPER ---
+  // Helper function for damage and knockback
   function damageEnemy(amount, knockbackForce) {
     enemyState.hp -= amount;
     
-    // Knock enemy back
     const dir = new THREE.Vector3().subVectors(enemyMesh.position, playerGroup.position).normalize();
     enemyMesh.position.addScaledVector(dir, knockbackForce);
 
@@ -266,7 +309,7 @@ function initGame() {
     }
   }
 
-  // --- UI UPDATER ---
+  // UI Updater
   function updateUI() {
     const enemyBar = document.getElementById("enemy-hp-bar");
     if (enemyBar) {
@@ -278,7 +321,6 @@ function initGame() {
       playerBar.style.width = (playerState.hp / playerState.maxHp) * 100 + "%";
     }
 
-    // Ultimate Ability Status UI
     const ultText = document.getElementById("ult-status");
     if (ultText) {
       if (playerState.ultCooldown === 0) {
