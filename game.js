@@ -21,7 +21,10 @@ const enemy = {
   width: 40,
   height: 40,
   color: "#ff6b6b",
-  hp: 100
+  hp: 100,
+  isRespawning: false,
+  respawnTimer: 0,
+  maxRespawnDelay: 120 // 120 frames (~2 seconds at 60fps)
 };
 
 // Track key presses
@@ -40,9 +43,9 @@ function update() {
   // Attack logic
   if (keys[" "] && player.attackCooldown === 0) {
     player.isAttacking = true;
-    player.attackCooldown = 30; // frames before next attack
+    player.attackCooldown = 30; // Cooldown between slashes
 
-    // Check hit collision with enemy
+    // Hitbox range for slash
     const attackArea = {
       x: player.x,
       y: player.y - 20,
@@ -50,22 +53,43 @@ function update() {
       height: player.height + 40
     };
 
+    // Damage enemy if alive
     if (
+      enemy.hp > 0 &&
       attackArea.x < enemy.x + enemy.width &&
       attackArea.x + attackArea.width > enemy.x &&
       attackArea.y < enemy.y + enemy.height &&
-      attackArea.y + attackArea.height > enemy.y &&
-      enemy.hp > 0
+      attackArea.y + attackArea.height > enemy.y
     ) {
       enemy.hp -= 20;
+
+      // Trigger respawn sequence when health drops to 0
+      if (enemy.hp <= 0) {
+        enemy.hp = 0;
+        enemy.isRespawning = true;
+        enemy.respawnTimer = enemy.maxRespawnDelay;
+      }
     }
   } else {
     player.isAttacking = false;
   }
 
+  // Cooldown timers
   if (player.attackCooldown > 0) player.attackCooldown--;
 
-  // Render everything
+  // Enemy Respawn Countdown
+  if (enemy.isRespawning) {
+    enemy.respawnTimer--;
+    if (enemy.respawnTimer <= 0) {
+      // Reset enemy stats and spawn position
+      enemy.hp = 100;
+      enemy.x = 650;
+      enemy.y = Math.random() * (canvas.height - enemy.height); // Random Y position on respawn
+      enemy.isRespawning = false;
+    }
+  }
+
+  // Render frame
   draw();
   requestAnimationFrame(update);
 }
@@ -83,7 +107,7 @@ function draw() {
     ctx.fillRect(player.x + player.width, player.y - 10, 50, player.height + 20);
   }
 
-  // Draw Enemy if alive
+  // Draw Enemy or Respawn Text
   if (enemy.hp > 0) {
     ctx.fillStyle = enemy.color;
     ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
@@ -94,16 +118,18 @@ function draw() {
     ctx.fillStyle = "green";
     ctx.fillRect(enemy.x, enemy.y - 15, (enemy.width * enemy.hp) / 100, 6);
   } else {
+    // Display countdown timer above defeat spot
+    const secondsLeft = Math.ceil(enemy.respawnTimer / 60);
     ctx.fillStyle = "#aaa";
-    ctx.font = "20px Arial";
-    ctx.fillText("Target Defeated!", enemy.x - 30, enemy.y);
+    ctx.font = "18px Arial";
+    ctx.fillText(`Respawning in ${secondsLeft}s...`, enemy.x - 30, enemy.y + 20);
   }
 
-  // Player HP Bar UI
+  // Player HP UI
   ctx.fillStyle = "#fff";
   ctx.font = "16px Arial";
   ctx.fillText(`Player HP: ${player.hp}`, 20, 30);
 }
 
-// Start game
+// Start game loop
 update();
