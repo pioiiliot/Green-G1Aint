@@ -3,15 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>2D Battlegrounds</title>
+  <title>3D Battlegrounds</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Load Three.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <h1>2D Battlegrounds</h1>
-  <p>Use <b>WASD</b> to move | Press <b>SPACE</b> to attack</p>
-  
-  <div id="game-container">
-    <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <div id="ui">
+    <h1>3D Arena Battlegrounds</h1>
+    <p><b>WASD</b> to move | <b>SPACE</b> to attack</p>
+    <div id="enemy-hp-container">
+      <div id="enemy-hp-bar"></div>
+    </div>
+    <p id="status-text">Target Locked</p>
   </div>
 
   <script src="game.js"></script>
