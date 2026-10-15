@@ -10,15 +10,23 @@
   <div id="ui">
     <h1>3D Arena Battlegrounds</h1>
     <p><b>WASD</b> to move | <b>SPACE</b> to attack</p>
-    <div id="enemy-hp-container">
+    
+    <label>Player HP</label>
+    <div id="hp-container">
+      <div id="player-hp-bar"></div>
+    </div>
+
+    <label>Enemy HP</label>
+    <div id="hp-container">
       <div id="enemy-hp-bar"></div>
     </div>
+
     <p id="status-text">Target Locked</p>
   </div>
 
   <!-- Load Three.js FIRST -->
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <!-- Load your Game SECOND -->
+  <!-- Load Game SECOND -->
   <script src="game.js"></script>
 </body>
 </html>
