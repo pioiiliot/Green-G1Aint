@@ -1,135 +1,169 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+// --- 1. SETUP THREE.JS SCENE, CAMERA, & RENDERER ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a12);
+scene.fog = new THREE.FogExp2(0x0a0a12, 0.03);
 
-// Player object
-const player = {
-  x: 100,
-  y: 225,
-  width: 40,
-  height: 40,
-  color: "#00d2d3",
-  speed: 5,
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// --- 2. LIGHTING (REALISTIC SHADOWS & GLOW) ---
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+sunLight.position.set(10, 20, 10);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+scene.add(sunLight);
+
+// Ground
+const floorGeo = new THREE.PlaneGeometry(60, 60);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x22222b, roughness: 0.8, metalness: 0.2 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Floor Grid Overlay
+const grid = new THREE.GridHelper(60, 30, 0x00d2d3, 0x444444);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// --- 3. PLAYER CREATION ---
+const playerGroup = new THREE.Group();
+
+const playerGeo = new THREE.CapsuleGeometry(0.5, 1, 8, 16);
+const playerMat = new THREE.MeshStandardMaterial({ color: 0x00d2d3, roughness: 0.3, metalness: 0.5 });
+const playerMesh = new THREE.Mesh(playerGeo, playerMat);
+playerMesh.position.y = 1;
+playerMesh.castShadow = true;
+playerGroup.add(playerMesh);
+
+// Attack Slash Visual
+const swordGeo = new THREE.BoxGeometry(0.1, 0.1, 1.8);
+const swordMat = new THREE.MeshBasicMaterial({ color: 0xffe600, transparent: true, opacity: 0 });
+const swordMesh = new THREE.Mesh(swordGeo, swordMat);
+swordMesh.position.set(0.6, 1, -0.8);
+playerGroup.add(swordMesh);
+
+scene.add(playerGroup);
+
+// --- 4. ENEMY CREATION ---
+const enemyGeo = new THREE.CapsuleGeometry(0.6, 1.2, 8, 16);
+const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff4757, roughness: 0.4, metalness: 0.2 });
+const enemyMesh = new THREE.Mesh(enemyGeo, enemyMat);
+enemyMesh.position.set(0, 1.1, -10);
+enemyMesh.castShadow = true;
+scene.add(enemyMesh);
+
+// Game State
+const enemyState = {
   hp: 100,
+  maxHp: 100,
+  isAlive: true,
+  respawnTimer: 0
+};
+
+const playerState = {
+  speed: 0.15,
   isAttacking: false,
   attackCooldown: 0
 };
 
-// Enemy dummy
-const enemy = {
-  x: 650,
-  y: 225,
-  width: 40,
-  height: 40,
-  color: "#ff6b6b",
-  hp: 100,
-  isRespawning: false,
-  respawnTimer: 0,
-  maxRespawnDelay: 120 // 120 frames (~2 seconds at 60fps)
-};
-
-// Track key presses
+// Controls
 const keys = {};
-window.addEventListener("keydown", (e) => (keys[e.key.toLowerCase()] = true));
-window.addEventListener("keyup", (e) => (keys[e.key.toLowerCase()] = false));
+window.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+window.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
 
-// Core game loop
-function update() {
-  // Movement logic
-  if (keys["w"] && player.y > 0) player.y -= player.speed;
-  if (keys["s"] && player.y < canvas.height - player.height) player.y += player.speed;
-  if (keys["a"] && player.x > 0) player.x -= player.speed;
-  if (keys["d"] && player.x < canvas.width - player.width) player.x += player.speed;
+// --- 5. GAME LOOP ---
+function animate() {
+  requestAnimationFrame(animate);
 
-  // Attack logic
-  if (keys[" "] && player.attackCooldown === 0) {
-    player.isAttacking = true;
-    player.attackCooldown = 30; // Cooldown between slashes
+  // --- Player Movement ---
+  if (keys["w"]) playerGroup.position.z -= playerState.speed;
+  if (keys["s"]) playerGroup.position.z += playerState.speed;
+  if (keys["a"]) playerGroup.position.x -= playerState.speed;
+  if (keys["d"]) playerGroup.position.x += playerState.speed;
 
-    // Hitbox range for slash
-    const attackArea = {
-      x: player.x,
-      y: player.y - 20,
-      width: player.width + 50,
-      height: player.height + 40
-    };
+  // --- Attack System ---
+  if (keys[" "] && playerState.attackCooldown === 0) {
+    playerState.isAttacking = true;
+    playerState.attackCooldown = 25; // Frame delay
+    swordMat.opacity = 0.9; // Flash slash weapon
 
-    // Damage enemy if alive
-    if (
-      enemy.hp > 0 &&
-      attackArea.x < enemy.x + enemy.width &&
-      attackArea.x + attackArea.width > enemy.x &&
-      attackArea.y < enemy.y + enemy.height &&
-      attackArea.y + attackArea.height > enemy.y
-    ) {
-      enemy.hp -= 20;
+    // Distance-based 3D Hit Detection
+    if (enemyState.isAlive) {
+      const dist = playerGroup.position.distanceTo(enemyMesh.position);
+      if (dist < 3.0) {
+        enemyState.hp -= 25;
+        // Recoil effect
+        enemyMesh.position.z -= 0.3;
 
-      // Trigger respawn sequence when health drops to 0
-      if (enemy.hp <= 0) {
-        enemy.hp = 0;
-        enemy.isRespawning = true;
-        enemy.respawnTimer = enemy.maxRespawnDelay;
+        if (enemyState.hp <= 0) {
+          enemyState.hp = 0;
+          enemyState.isAlive = false;
+          enemyMesh.visible = false;
+          enemyState.respawnTimer = 120; // 2 seconds at 60fps
+        }
+        updateUI();
       }
     }
-  } else {
-    player.isAttacking = false;
   }
 
-  // Cooldown timers
-  if (player.attackCooldown > 0) player.attackCooldown--;
+  // Attack Animation Fading
+  if (playerState.isAttacking) {
+    swordMesh.rotation.y -= 0.3;
+    if (swordMat.opacity > 0) swordMat.opacity -= 0.05;
+  } else {
+    swordMesh.rotation.y = 0;
+  }
 
-  // Enemy Respawn Countdown
-  if (enemy.isRespawning) {
-    enemy.respawnTimer--;
-    if (enemy.respawnTimer <= 0) {
-      // Reset enemy stats and spawn position
-      enemy.hp = 100;
-      enemy.x = 650;
-      enemy.y = Math.random() * (canvas.height - enemy.height); // Random Y position on respawn
-      enemy.isRespawning = false;
+  if (playerState.attackCooldown > 0) {
+    playerState.attackCooldown--;
+    if (playerState.attackCooldown === 0) playerState.isAttacking = false;
+  }
+
+  // --- Enemy Respawn Logic ---
+  if (!enemyState.isAlive) {
+    enemyState.respawnTimer--;
+    document.getElementById("status-text").innerText = `Target Down! Respawning in ${(enemyState.respawnTimer / 60).toFixed(1)}s`;
+
+    if (enemyState.respawnTimer <= 0) {
+      enemyState.isAlive = true;
+      enemyState.hp = enemyState.maxHp;
+      enemyMesh.visible = true;
+      // Random respawn spot near origin
+      enemyMesh.position.set((Math.random() - 0.5) * 10, 1.1, -8 - Math.random() * 5);
+      updateUI();
+      document.getElementById("status-text").innerText = "Target Locked";
     }
   }
 
-  // Render frame
-  draw();
-  requestAnimationFrame(update);
+  // --- Camera Follows Player ---
+  camera.position.x = playerGroup.position.x;
+  camera.position.y = playerGroup.position.y + 6;
+  camera.position.z = playerGroup.position.z + 10;
+  camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1, playerGroup.position.z);
+
+  renderer.render(scene, camera);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Draw Player
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.width, player.height);
-
-  // Draw Attack Slash
-  if (player.isAttacking) {
-    ctx.fillStyle = "rgba(255, 230, 0, 0.6)";
-    ctx.fillRect(player.x + player.width, player.y - 10, 50, player.height + 20);
-  }
-
-  // Draw Enemy or Respawn Text
-  if (enemy.hp > 0) {
-    ctx.fillStyle = enemy.color;
-    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-
-    // Enemy HP Bar
-    ctx.fillStyle = "red";
-    ctx.fillRect(enemy.x, enemy.y - 15, enemy.width, 6);
-    ctx.fillStyle = "green";
-    ctx.fillRect(enemy.x, enemy.y - 15, (enemy.width * enemy.hp) / 100, 6);
-  } else {
-    // Display countdown timer above defeat spot
-    const secondsLeft = Math.ceil(enemy.respawnTimer / 60);
-    ctx.fillStyle = "#aaa";
-    ctx.font = "18px Arial";
-    ctx.fillText(`Respawning in ${secondsLeft}s...`, enemy.x - 30, enemy.y + 20);
-  }
-
-  // Player HP UI
-  ctx.fillStyle = "#fff";
-  ctx.font = "16px Arial";
-  ctx.fillText(`Player HP: ${player.hp}`, 20, 30);
+function updateUI() {
+  const hpBar = document.getElementById("enemy-hp-bar");
+  const percentage = (enemyState.hp / enemyState.maxHp) * 100;
+  hpBar.style.width = percentage + "%";
 }
 
-// Start game loop
-update();
+// Adjust camera on window resize
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
